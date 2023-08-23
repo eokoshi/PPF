@@ -51,36 +51,6 @@ library(gtsummary)
 library(labelled)
 
 
-# Survival --------------
-
-Surv(sheet$obs_months, sheet$death_or_lung_transplant)
-spUIP <- survfit(Surv(obs_months, death_or_lung_transplant) ~ pathUIP, data = sheet)
-
-gtsummary::tbl_survfit(spUIP, times = 48, label_header = "**4-year survival path (95% CI)**")
-
-sfUIP <- survfit(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = sheet)
-
-survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = sheet) %>%
-  ggsurvfit() +
-  labs(x = "Months", y = "Overall Survival Probability") +
-  xlim(0, 125) +
-  ylim(0, 1)
-
-gtsummary::tbl_survfit(sfUIP, times = 48, label_header = "**4-year survival focal (95% CI)**")
-
-
-# KL-6 stats tests ----
-
-hist(sheet$`KL-6`, breaks = 250, xlim = c(0, 6000)) # check data for normality
-summary(aov(formula = `KL-6` ~ pathUIP, data = sheet)) # anova for pathUIP
-summary(aov(formula = `KL-6` ~ focalUIP_consensus, data = sheet)) # anova for focalUIP
-kruskal.test(`KL-6` ~ pathUIP, data = sheet) # kruskal wallis test (non-parametric oneway anova)
-
-# smoker (ex and current) vs nonsmokers in UIP prop.test ----
-
-prop.test(table(sheet$pathUIP, sheet$nonsmoker), correct = FALSE)
-prop.test(table(sheet$focalUIP_consensus, sheet$nonsmoker), correct = FALSE)
-
 # fig 3 survial plot path UIP ----
 png("output/pathUIPsurv_v3.png", res = 300, width = 6, height = 4, units = "in")
 survfit2(Surv(obs_months, death_or_lung_transplant) ~ pathUIP, data = sheet) %>%
@@ -353,7 +323,7 @@ grid.arrange(
   padding = unit(0.5, "cm")
 )
 dev.off()
-# fig5 focalUIP by etiology ------
+# fig 5 focalUIP by etiology ------
 
 p1 <- survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = filter(sheet, disease == "cHP")) %>%
   ggsurvfit(linewidth = 1, show.legend = FALSE) +
@@ -464,7 +434,7 @@ grid.arrange(p1,
 )
 dev.off()
 
-# fig6 focalUIP within pathUIP- cases ------
+# fig 6 focalUIP within pathUIP- cases ------
 png("output/focalUIPinpathUIPneg_v1.png", res = 300, width = 6, height = 4, units = "in")
 survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = filter(sheet, pathUIP == 0)) %>%
   ggsurvfit(linewidth = 1, show.legend = FALSE) +
@@ -555,7 +525,7 @@ ggcoxfunctional(Surv(obs_months, death_or_lung_transplant) ~ Age + log(Age) + sq
 
 n_perm <- 2000
 
-cox_perm <- function(d) {
+cox_perm <- function() {
   sheet.iter <- filter(sheet, disease != "iPPFE")
   sheet.iter$permdisease <- sample(sheet.iter$disease, replace = FALSE)
   coxph.results <- sheet.iter %>%
@@ -631,50 +601,6 @@ p4 <- create_marginal_plot_func(coxph_results, "iNSIP", 19)
 png("output/fig7_permutationtestcox.png", res = 500, width = 12, height = 8, units = "in")
 grid.arrange(p1, p2, p3, p4)
 dev.off()
-
-# table 3 cox results in gt --------------
-
-var_label(sheet) <- list(
-  focalUIP_consensus = "Focal UIP",
-  disease = "Disease",
-  obs_months = "Time to Event",
-  death_or_lung_transplant = "Event",
-  smoking_hist = "Smoking history",
-  Male = "Sex"
-)
-
-multivariate_tbl <-
-  tbl_regression(
-    res.cox,
-    exponentiate = TRUE,
-    show_single_row = "Male"
-  ) %>%
-  bold_p()
-
-univariate_tbl <- sheet %>%
-  select(focalUIP_consensus, obs_months, death_or_lung_transplant, disease, FVC, `%FVC`, Dlco, `%Dlco`, smoking_hist, Male, Age) %>%
-  tbl_uvregression(
-    method = coxph,
-    y = Surv(obs_months, death_or_lung_transplant),
-    exponentiate = TRUE,
-    show_single_row = "Male"
-  ) %>%
-  bold_p()
-
-table3 <-
-  tbl_merge(
-    tbls = list(univariate_tbl, multivariate_tbl),
-    tab_spanner = c("**Univariate**", "**Multivariate**")
-  ) %>%
-  as_gt() %>%
-  text_replace(
-    locations = cells_body(columns = c("ci_1", "ci_2")),
-    pattern = "(^\\d.*)",
-    replacement = ("\\[\\1\\]")
-  )
-table3
-
-gtsave(table3, "output/table3.png", zoom = 10)
 
 # table 1 population statistics ---------------
 
@@ -770,3 +696,45 @@ gt(table2, rowname_col = "disease") %>%
     locations = cells_column_labels()
   ) %>%
   gtsave("output/table2.png", zoom = 10, delay = 0.5)
+
+# table 3 cox results in gt --------------
+
+var_label(sheet) <- list(
+  focalUIP_consensus = "Focal UIP",
+  disease = "Disease",
+  obs_months = "Time to Event",
+  death_or_lung_transplant = "Event",
+  smoking_hist = "Smoking history",
+  Male = "Sex"
+)
+
+multivariate_tbl <-
+  tbl_regression(
+    res.cox,
+    exponentiate = TRUE,
+    show_single_row = "Male"
+  ) %>%
+  bold_p()
+
+univariate_tbl <- sheet %>%
+  select(focalUIP_consensus, obs_months, death_or_lung_transplant, disease, FVC, `%FVC`, Dlco, `%Dlco`, smoking_hist, Male, Age) %>%
+  tbl_uvregression(
+    method = coxph,
+    y = Surv(obs_months, death_or_lung_transplant),
+    exponentiate = TRUE,
+    show_single_row = "Male"
+  ) %>%
+  bold_p()
+
+table3 <-
+  tbl_merge(
+    tbls = list(univariate_tbl, multivariate_tbl),
+    tab_spanner = c("**Univariate**", "**Multivariate**")
+  ) %>%
+  as_gt() %>%
+  text_replace(
+    locations = cells_body(columns = c("ci_1", "ci_2")),
+    pattern = "(^\\d.*)",
+    replacement = ("\\[\\1\\]")
+  ) %>%
+  gtsave("output/table3.png", zoom = 10)
