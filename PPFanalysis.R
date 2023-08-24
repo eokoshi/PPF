@@ -673,7 +673,7 @@ table2 <- tribble(~disease,~n, ~def, ~prob, ~poss, ~other, ~rate,
 
 gt(table2, rowname_col = "disease") %>%
   tab_stubhead(label = md("**Etiology**")) %>%
-  tab_header(title = md("**PPF**; Pulmonary Progressive Fibrosis (n = 201)")) %>%
+  tab_header(title = md("**PPF**; Progressive Pulmonary Fibrosis (n = 201)")) %>%
   cols_label(
     n = "N",
     def = "Definite UIP",
