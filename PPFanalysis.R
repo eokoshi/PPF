@@ -27,13 +27,6 @@ Sys.setenv(LANG = "EN")
 #
 # source()
 #
-# load data
-#
-input_sheet_path <- "input/PPF for USCAP230309_R.xlsx"
-library(readxl)
-sheet <- read_excel(input_sheet_path, sheet = "Sheet3")
-sheet[c("Dlco", "%Dlco")] <- sapply(sheet[c("Dlco", "%Dlco")], as.numeric)
-#
 # load packages ---------------
 require(tidyverse)
 library(magrittr)
@@ -49,9 +42,209 @@ library(glue)
 library(gt)
 library(gtsummary)
 library(labelled)
+library(pROC)
+library(plotly)
 
+# Load Data ---------------------
+#
+input_sheet_path <- "input/PPF for USCAP230309_R.xlsx"
+library(readxl)
+sheet <- read_excel(input_sheet_path, sheet = "Sheet3")
+sheet[c("Dlco", "%Dlco")] <- sapply(sheet[c("Dlco", "%Dlco")], as.numeric)
+var_label(sheet) <- list(
+  focalUIP_consensus = "Focal UIP",
+  disease = "Disease",
+  obs_months = "Time to Event",
+  death_or_lung_transplant = "Event",
+  smoking_hist = "Smoking history",
+  Male = "Sex"
+)
+#
+# Focal UIP Threshold (Cutoff) Analysis ---------------
 
-# fig 3 survial plot path UIP ----
+# creating data
+rocsheet <-
+  sheet %>%
+  select(UIP_rate_ave, obs_months, death_or_lung_transplant) %>%
+  mutate(
+    fifty = if_else(UIP_rate_ave >= 50.0, 1, 0),
+    forty = if_else(UIP_rate_ave >= 40.0, 1, 0),
+    thirty = if_else(UIP_rate_ave >= 30.0, 1, 0),
+    twenty = if_else(UIP_rate_ave >= 20.0, 1, 0),
+    ten = if_else(UIP_rate_ave >= 10.0, 1, 0)
+  )
+
+# will print out univariate cox survival analysis for each cutoff value e.g. (0.50) = fifty
+UIP_cutoff_comparison_survival <-
+  c(colnames(select(rocsheet, fifty:ten))) %>%
+  map(\(x) formula(glue(
+    "Surv(obs_months, death_or_lung_transplant) ~ {x}"
+  ))) %>%
+  map(\(x) coxph(x, data = rocsheet)) %>%
+  map(tidy, exponentiate = TRUE, conf.int = TRUE) %>%
+  tibble(summary = .) %>%
+  unnest_wider(summary) %>%
+  select(term, estimate, p.value, conf.low, conf.high) %>%
+  separate_rows(c(term, estimate, p.value, conf.low, conf.high), sep = ", ") %>%
+  mutate(conf.low = round(conf.low, 3),
+         conf.high = round(conf.high, 3)) %>%
+  mutate(conf.low = as.character(conf.low),
+         conf.high = as.character(conf.high)) %>%
+  unite(conf.low, conf.high, col = "CI", sep = ", ") %>%
+  left_join(
+    y =
+      rocsheet %>%
+      select(fifty:ten) %>%
+      summarise(across(everything(), sum)) %>%
+      pivot_longer(
+        cols = everything(),
+        names_to = "term",
+        values_to = "n_pos"
+      ),
+    by = "term"
+  ) %>%
+  mutate(term = case_when(
+    term == "fifty" ~ "50%",
+    term == "forty" ~ "40%",
+    term == "thirty" ~ "30%",
+    term == "twenty" ~ "20%",
+    term == "ten" ~ "10%",
+  )) %>%
+  relocate(n_pos, .before = estimate)
+
+#output formatted table
+gt(UIP_cutoff_comparison_survival, rowname_col = "term") %>%
+  tab_stubhead(label = "Cutoff Threshold") %>%
+  tab_options(
+    heading.title.font.size = "medium",
+    table.width = px(480),
+    table.align = "left"
+  ) %>%
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_body()
+  )  %>%
+  tab_style(
+    style = cell_text(align = "center",
+                      weight = "bold"),
+    locations = cells_column_labels()
+  ) %>%
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_stub()
+  ) %>%
+  tab_style(
+    style = cell_text(align = "center",
+                      weight = "bold"),
+    locations = cells_stubhead()
+  ) %>%
+  cols_label(estimate = md("HR"),
+             p.value = md("p-value"),
+             CI = md("95% CI"),
+             n_pos = md("n Positive")
+             ) %>%
+  gtsave("output/cutofftable_suppfig1.png", zoom = 10, delay = 0.5)
+
+# ROC analysis of cutoff values ---------------
+
+roc <- roc(
+  death_or_lung_transplant ~ UIP_rate_ave,
+  data = rocsheet)[2:4] %>% data.frame() %>%
+  distinct(specificities, .keep_all = TRUE) %>%
+  arrange(desc(specificities)) %>%
+  distinct(sensitivities, .keep_all = TRUE)
+
+rocplot <-
+  ggplot(data = data.frame(roc), aes(x = specificities, y = sensitivities)) +
+  geom_step(direction = "hv") +  
+  geom_point(aes(group = thresholds)) +
+  scale_x_reverse() +
+  geom_abline(slope = 1,
+              intercept = 1)
+
+# creates an interactive plot which shows that a 10% cutoff threshold is 
+# furthest from the centerline
+ggplotly(rocplot)
+
+# will create an output version
+roc %<>% mutate(residual = 
+                  map2_dbl(roc$specificities, roc$sensitivities,
+                    \(x,y) abs(x+y-1)/sqrt(2)),
+                midpoint.x = 
+                  map2_dbl(roc$specificities, roc$sensitivities,
+                    \(x,y) (x+1-y)/2),
+                midpoint.y =
+                  map2_dbl(roc$specificities, roc$sensitivities,
+                    \(x,y) (1-x+y)/2)
+                    )
+
+ggplot(data = roc, aes(x = specificities, y = sensitivities)) +
+  geom_step(direction = "hv",
+            linewidth = 1.5,
+            alpha = 0.9) +  
+  geom_rect(aes(xmin = specificities,
+                xmax = lead(specificities),
+                ymin = 0,
+                ymax = sensitivities),
+            alpha = 0.08,
+            fill = "grey50") +
+  geom_abline(slope = 1,
+              intercept = 1,
+              linewidth = 1.2,
+              alpha = 0.3,
+              linetype = "22") +
+  geom_segment(aes(x = specificities,
+                   xend = midpoint.x,
+                   y = sensitivities,
+                   yend = midpoint.y,
+                   color = residual),
+               linewidth = 0.8,
+               alpha = 0.95,
+               linetype = "21") +
+  geom_point(aes(fill = thresholds),
+             alpha = 0.9,
+             shape = 22,
+             size = 2.5,
+             color = "grey8"
+             ) +
+  scale_x_reverse() +
+  scale_fill_stepsn(colors = c("grey90", "#FF4A4A", "#00AAFF", "green", "#D5FF00", "#FFC400"),
+                    values = scales::rescale(c(1:6), to = c(0, 1)),
+                    breaks = c(0, 10, 20, 30, 40, 50),
+                    labels = function(x) glue("{x}%"),
+                    limits = c(9,51),
+                    name = "Threshold") +
+  scale_color_viridis_c(direction = 1,
+                        name = "Residual",
+                        n.breaks = 5,
+                        limits = c(0.001,0.18),
+                        na.value = "red1", #highlight 10% cutoff
+                        option = "G") +
+  labs(x = "Specificity", 
+       y = "Sensitivity") +
+  # geom_label(
+  #          x = 0,
+  #          y = -0.03,
+  #          hjust = 1,
+  #          vjust = 0,
+  #          label = " Largest residual observed at 10% cutoff ",
+  #          family = "Barlow",
+  #          ) +
+  theme_light() +
+  theme(
+    panel.background = element_rect(color = "black", fill = "grey99"),
+    panel.grid = element_line(color = "grey94"),
+    text = element_text(family = "Barlow"),
+    axis.title = element_text(family = "Barlow Medium"),
+    axis.title.x.bottom = element_text(margin = margin(0.3,0,0,0, unit = "cm")),
+    axis.title.y.left = element_text(margin = margin(0,0.3,0,0, unit = "cm")),
+    # legend.position = c(0.78,0.25),
+    # legend.box = "horizontal",
+    # legend.background = element_rect(color = "grey85")
+    )
+ggsave("output/ROC_analysis_v5.png", dpi=600, height = 12, width = 15, units = "cm")
+
+# fig 3 survial plot path UIP -------------------
 png("output/pathUIPsurv_v3.png", res = 300, width = 6, height = 4, units = "in")
 survfit2(Surv(obs_months, death_or_lung_transplant) ~ pathUIP, data = sheet) %>%
   ggsurvfit(linewidth = 1, show.legend = FALSE) +
@@ -462,7 +655,7 @@ survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data =
 dev.off()
 
 # cox univariate testing -------------
-variables <- c("focalUIP_consensus", "disease", "Age", "Male", "nonsmoker", "FVC", "`%FVC`", "Dlco", "`%Dlco`")
+variables <- c("focalUIP_consensus", "disease", "Age", "Male", "nonsmoker", "FVC", "`%FVC`", "Dlco", "`%Dlco`", "log(`KL-6`)")
 
 univariate_cox_results <-
   tibble(variables) %>%
@@ -487,7 +680,18 @@ write_csv(univariate_cox_results, "output/univariate_cox_results.csv")
 # cox multivariate testing ------------------
 
 # this one uses UC-ILD as the "reference disease"
-res.cox <- coxph(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus + disease + Age + Male + smoking_hist + FVC + `%FVC` + Dlco + `%Dlco`, data = sheet)
+res.cox <- 
+  mutate(sheet, `KL-6` = log(`KL-6`)) %$% # see note below on KL-6
+  coxph(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus + 
+                   Male + 
+                   Age + 
+                   smoking_hist + 
+                   FVC + 
+                   `%FVC` + 
+                   Dlco +
+                   `%Dlco` + 
+                   `KL-6` + #used log based on via ggcoxfunctional analysis
+                   disease)
 summary(res.cox)
 
 
@@ -518,8 +722,12 @@ ggcoxdiagnostics(res.cox,
   linear.predictions = FALSE, ggtheme = theme_bw()
 )
 
-ggcoxfunctional(Surv(obs_months, death_or_lung_transplant) ~ Age + log(Age) + sqrt(Age), data = sheet)
-
+ggcoxfunctional(Surv(obs_months, death_or_lung_transplant) ~ Age +  log(Age) + sqrt(Age), data = sheet)
+ggcoxfunctional(Surv(obs_months, death_or_lung_transplant) ~ FVC +  log(FVC) + sqrt(FVC), data = sheet)
+ggcoxfunctional(Surv(obs_months, death_or_lung_transplant) ~ `%FVC` + log(`%FVC`) +  sqrt(`%FVC`), data = sheet)
+ggcoxfunctional(Surv(obs_months, death_or_lung_transplant) ~ Dlco + log(Dlco) + sqrt(Dlco), data = filter(sheet, !is.na(Dlco)))
+ggcoxfunctional(Surv(obs_months, death_or_lung_transplant) ~ `%Dlco` + log(`%Dlco`) + sqrt(`%Dlco`), data = filter(sheet, !is.na(Dlco)))
+ggcoxfunctional(Surv(obs_months, death_or_lung_transplant) ~ `KL-6` + log(`KL-6`) + sqrt(`KL-6`), data = sheet)
 
 # cox permutation testing ---------------
 
@@ -598,7 +806,7 @@ p3 <- create_marginal_plot_func(coxph_results, "UC-ILD", 84)
 
 p4 <- create_marginal_plot_func(coxph_results, "iNSIP", 19)
 
-png("output/fig7_permutationtestcox.png", res = 500, width = 12, height = 8, units = "in")
+png("output/fig7_permutationtestcox.png", res = 320, width = 16, height = 12, units = "cm")
 grid.arrange(p1, p2, p3, p4)
 dev.off()
 
@@ -626,8 +834,8 @@ t1 <- tbl_merge(
                 add_p() %>%
                 bold_p() %>%
                 separate_p_footnotes() %>%
-                modify_table_styling(columns = all_of("p.value"), 
-                                     text_format = "italic") %>%
+                # modify_table_styling(columns = all_of("p.value"), 
+                #                      text_format = "italic") %>%
                 modify_header(p.value = "***p-value***"),
               sheet %>% #focalUIP
                 select(focalUIP_consensus, Male, Age, smoking_hist, FVC, `%FVC`, Dlco, `%Dlco`, `KL-6`, disease) %>%
@@ -641,8 +849,8 @@ t1 <- tbl_merge(
                 add_p() %>%
                 bold_p() %>%
                 separate_p_footnotes() %>%
-                modify_table_styling(columns = all_of("p.value"), 
-                                     text_format = "italic") %>%
+                # modify_table_styling(columns = all_of("p.value"), 
+                #                      text_format = "italic") %>%
                 modify_header(p.value = "***p-value***"),
               sheet %>% #Total
                 select(Male, Age, smoking_hist, FVC, `%FVC`, Dlco, `%Dlco`, `KL-6`, disease) %>%
@@ -714,17 +922,24 @@ multivariate_tbl <-
     exponentiate = TRUE,
     show_single_row = "Male"
   ) %>%
-  bold_p()
+  bold_p()%>%
+  modify_header(p.value = "***p-value***") %>%
+  modify_table_styling(columns = p.value,
+                       footnote = "Wald test")
 
 univariate_tbl <- sheet %>%
-  select(focalUIP_consensus, obs_months, death_or_lung_transplant, disease, FVC, `%FVC`, Dlco, `%Dlco`, smoking_hist, Male, Age) %>%
+  select(focalUIP_consensus, obs_months, death_or_lung_transplant,  Male, Age,smoking_hist, FVC, `%FVC`, Dlco, `%Dlco`, `KL-6`, disease,) %>%
+  mutate(`KL-6` = log(`KL-6`)) %>%
   tbl_uvregression(
     method = coxph,
     y = Surv(obs_months, death_or_lung_transplant),
     exponentiate = TRUE,
     show_single_row = "Male"
   ) %>%
-  bold_p()
+  bold_p() %>%
+  modify_header(p.value = "***p-value***") %>%
+  modify_table_styling(columns = p.value,
+                       footnote = "Wald test")
 
 table3 <-
   tbl_merge(
