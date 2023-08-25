@@ -1,4 +1,4 @@
-# Header ---------------------------
+## Header ---------------------------
 #
 # Script name: PPFanalysis.R
 #
@@ -27,7 +27,7 @@ Sys.setenv(LANG = "EN")
 #
 # source()
 #
-# load packages ---------------
+## load packages ---------------
 require(tidyverse)
 library(magrittr)
 library(broom)
@@ -45,7 +45,7 @@ library(labelled)
 library(pROC)
 library(plotly)
 
-# Load Data ---------------------
+## Load Data ---------------------
 #
 input_sheet_path <- "input/PPF for USCAP230309_R.xlsx"
 library(readxl)
@@ -60,7 +60,7 @@ var_label(sheet) <- list(
   Male = "Sex"
 )
 #
-# Focal UIP Threshold (Cutoff) Analysis ---------------
+## Focal UIP Threshold (Cutoff) Analysis ---------------
 
 # creating data
 rocsheet <-
@@ -145,7 +145,7 @@ gt(UIP_cutoff_comparison_survival, rowname_col = "term") %>%
              ) %>%
   gtsave("output/cutofftable_suppfig1.png", zoom = 10, delay = 0.5)
 
-# ROC analysis of cutoff values ---------------
+## ROC analysis of cutoff values ---------------
 
 roc <- roc(
   death_or_lung_transplant ~ UIP_rate_ave,
@@ -244,7 +244,7 @@ ggplot(data = roc, aes(x = specificities, y = sensitivities)) +
     )
 ggsave("output/ROC_analysis_v5.png", dpi=600, height = 12, width = 15, units = "cm")
 
-# fig 3 survial plot path UIP -------------------
+## fig 3 survial plot path UIP -------------------
 png("output/pathUIPsurv_v3.png", res = 300, width = 6, height = 4, units = "in")
 survfit2(Surv(obs_months, death_or_lung_transplant) ~ pathUIP, data = sheet) %>%
   ggsurvfit(linewidth = 1, show.legend = FALSE) +
@@ -296,7 +296,7 @@ survfit2(Surv(obs_months, death_or_lung_transplant) ~ pathUIP, data = sheet) %>%
   )
 dev.off()
 
-# fig 4 suvival plot 2 focaluip individually --------
+## fig 4 suvival plot 2 focaluip individually --------
 png("output/focUIPsurv_consensus_v1.png", res = 600, width = 6, height = 4, units = "in")
 survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = sheet) %>%
   ggsurvfit(linewidth = 1, show.legend = FALSE) +
@@ -401,7 +401,7 @@ survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP3, data = sheet) %
   annotate("text", x = 0, y = 0, label = "log-rank test, p = 0.0002", color = "grey30", family = "Barlow Medium", hjust = 0, vjust = 0)
 dev.off()
 
-# fig 4 gridarrange ------
+## fig 4 gridarrange ------
 p1 <- 
   survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP1, data = sheet) %>%
   ggsurvfit(linewidth = 1, show.legend = FALSE) +
@@ -516,7 +516,7 @@ grid.arrange(
   padding = unit(0.5, "cm")
 )
 dev.off()
-# fig 5 focalUIP by etiology ------
+## fig 5 focalUIP by etiology ------
 
 p1 <- survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = filter(sheet, disease == "cHP")) %>%
   ggsurvfit(linewidth = 1, show.legend = FALSE) +
@@ -627,7 +627,7 @@ grid.arrange(p1,
 )
 dev.off()
 
-# fig 6 focalUIP within pathUIP- cases ------
+## fig 6 focalUIP within pathUIP- cases ------
 png("output/focalUIPinpathUIPneg_v1.png", res = 300, width = 6, height = 4, units = "in")
 survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = filter(sheet, pathUIP == 0)) %>%
   ggsurvfit(linewidth = 1, show.legend = FALSE) +
@@ -654,7 +654,7 @@ survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data =
   annotate("text", x = 0, y = 0, label = "log-rank test, p = 0.0018", color = "grey30", family = "Barlow Medium", hjust = 0, vjust = 0)
 dev.off()
 
-# cox univariate testing -------------
+## cox univariate testing -------------
 variables <- c("focalUIP_consensus", "disease", "Age", "Male", "nonsmoker", "FVC", "`%FVC`", "Dlco", "`%Dlco`", "log(`KL-6`)")
 
 univariate_cox_results <-
@@ -677,7 +677,7 @@ univariate_cox_results <-
 
 write_csv(univariate_cox_results, "output/univariate_cox_results.csv")
 
-# cox multivariate testing ------------------
+## cox multivariate testing ------------------
 
 # this one uses UC-ILD as the "reference disease"
 res.cox <- 
@@ -729,7 +729,7 @@ ggcoxfunctional(Surv(obs_months, death_or_lung_transplant) ~ Dlco + log(Dlco) + 
 ggcoxfunctional(Surv(obs_months, death_or_lung_transplant) ~ `%Dlco` + log(`%Dlco`) + sqrt(`%Dlco`), data = filter(sheet, !is.na(Dlco)))
 ggcoxfunctional(Surv(obs_months, death_or_lung_transplant) ~ `KL-6` + log(`KL-6`) + sqrt(`KL-6`), data = sheet)
 
-# cox permutation testing ---------------
+## cox permutation testing ---------------
 
 n_perm <- 2000
 
@@ -760,7 +760,7 @@ coxph_real <- filter(sheet, disease != "iPPFE") %>%
 colnames(coxph_real)[3] <- "HR"
 colnames(coxph_real)[6] <- "p.value"
 
-# fig 7 cox permutation test -------------
+## fig 7 cox permutation test -------------
 
 create_marginal_plot_func <- function(coxph_results, permdisease_str, n) {
   if (coxph_real[coxph_real["disease"] == permdisease_str, ][["HR"]] > 1000) {
@@ -810,7 +810,7 @@ png("output/fig7_permutationtestcox.png", res = 320, width = 16, height = 12, un
 grid.arrange(p1, p2, p3, p4)
 dev.off()
 
-# table 1 population statistics ---------------
+## table 1 population statistics ---------------
 
 var_label(sheet) <- list(
   focalUIP_consensus = "Focal UIP",
@@ -870,7 +870,7 @@ t1[["_footnotes"]] %<>% filter(!(colname == "p.value_1" & rownum == 5 & footnote
 gtsave(t1, "output/table1.png", zoom = 10, delay = 0.5, expand = 20)
 
 
-# table 2 disease stats ---------------------
+## table 2 disease stats ---------------------
 
 table2 <- tribble(~disease,~n, ~def, ~prob, ~poss, ~other, ~rate,
                   "iNSIP",19,0,0,0,4,"21%",
@@ -905,7 +905,7 @@ gt(table2, rowname_col = "disease") %>%
   ) %>%
   gtsave("output/table2.png", zoom = 10, delay = 0.5)
 
-# table 3 cox results in gt --------------
+## table 3 cox results in gt --------------
 
 var_label(sheet) <- list(
   focalUIP_consensus = "Focal UIP",
