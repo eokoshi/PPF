@@ -21,7 +21,7 @@
 #
 options(scipen = 6, digits = 4) # I prefer to view outputs in non-scientific notation
 Sys.setenv(LANG = "EN")
- extrafont::loadfonts(device = "win")
+extrafont::loadfonts(device = "win")
 #
 # load functions from another file
 #
@@ -44,6 +44,7 @@ library(gtsummary)
 library(labelled)
 library(pROC)
 library(plotly)
+library(caret)
 
 ## Load Data ---------------------
 #
@@ -60,12 +61,13 @@ var_label(sheet) <- list(
   Male = "Sex"
 )
 #
+## End Header ------------------------------
 ## Focal UIP Threshold (Cutoff) Analysis ---------------
 
 # creating data
 rocsheet <-
-  sheet %>%
-  select(UIP_rate_ave, obs_months, death_or_lung_transplant) %>%
+  sheet |>
+  select(UIP_rate_ave, obs_months, death_or_lung_transplant) |>
   mutate(
     fifty = if_else(UIP_rate_ave >= 50.0, 1, 0),
     forty = if_else(UIP_rate_ave >= 40.0, 1, 0),
@@ -76,82 +78,82 @@ rocsheet <-
 
 # will print out univariate cox survival analysis for each cutoff value e.g. (0.50) = fifty
 UIP_cutoff_comparison_survival <-
-  c(colnames(select(rocsheet, fifty:ten))) %>%
+  c(colnames(select(rocsheet, fifty:ten))) |>
   map(\(x) formula(glue(
     "Surv(obs_months, death_or_lung_transplant) ~ {x}"
-  ))) %>%
-  map(\(x) coxph(x, data = rocsheet)) %>%
-  map(tidy, exponentiate = TRUE, conf.int = TRUE) %>%
-  tibble(summary = .) %>%
-  unnest_wider(summary) %>%
-  select(term, estimate, p.value, conf.low, conf.high) %>%
-  separate_rows(c(term, estimate, p.value, conf.low, conf.high), sep = ", ") %>%
+  ))) |>
+  map(\(x) coxph(x, data = rocsheet)) |>
+  map(tidy, exponentiate = TRUE, conf.int = TRUE) |>
+  tibble(summary = .) |>
+  unnest_wider(summary) |>
+  select(term, estimate, p.value, conf.low, conf.high) |>
+  separate_rows(c(term, estimate, p.value, conf.low, conf.high), sep = ", ") |>
   mutate(conf.low = round(conf.low, 3),
-         conf.high = round(conf.high, 3)) %>%
+         conf.high = round(conf.high, 3)) |>
   mutate(conf.low = as.character(conf.low),
-         conf.high = as.character(conf.high)) %>%
-  unite(conf.low, conf.high, col = "CI", sep = ", ") %>%
+         conf.high = as.character(conf.high)) |>
+  unite(conf.low, conf.high, col = "CI", sep = ", ") |>
   left_join(
     y =
-      rocsheet %>%
-      select(fifty:ten) %>%
-      summarise(across(everything(), sum)) %>%
+      rocsheet |>
+      select(fifty:ten) |>
+      summarise(across(everything(), sum)) |>
       pivot_longer(
         cols = everything(),
         names_to = "term",
         values_to = "n_pos"
       ),
     by = "term"
-  ) %>%
+  ) |>
   mutate(term = case_when(
     term == "fifty" ~ "50%",
     term == "forty" ~ "40%",
     term == "thirty" ~ "30%",
     term == "twenty" ~ "20%",
     term == "ten" ~ "10%",
-  )) %>%
+  )) |>
   relocate(n_pos, .before = estimate)
 
 #output formatted table
-gt(UIP_cutoff_comparison_survival, rowname_col = "term") %>%
-  tab_stubhead(label = "Cutoff Threshold") %>%
+gt(UIP_cutoff_comparison_survival, rowname_col = "term") |>
+  tab_stubhead(label = "Cutoff Threshold") |>
   tab_options(
     heading.title.font.size = "medium",
     table.width = px(480),
     table.align = "left"
-  ) %>%
+  ) |>
   tab_style(
     style = cell_text(align = "center"),
     locations = cells_body()
-  )  %>%
+  )  |>
   tab_style(
     style = cell_text(align = "center",
                       weight = "bold"),
     locations = cells_column_labels()
-  ) %>%
+  ) |>
   tab_style(
     style = cell_text(align = "center"),
     locations = cells_stub()
-  ) %>%
+  ) |>
   tab_style(
     style = cell_text(align = "center",
                       weight = "bold"),
     locations = cells_stubhead()
-  ) %>%
+  ) |>
   cols_label(estimate = md("HR"),
              p.value = md("p-value"),
              CI = md("95% CI"),
              n_pos = md("n Positive")
-             ) %>%
+             ) |>
   gtsave("output/cutofftable_suppfig1.png", zoom = 10, delay = 0.5)
 
 ## ROC analysis of cutoff values ---------------
 
 roc <- roc(
   death_or_lung_transplant ~ UIP_rate_ave,
-  data = rocsheet)[2:4] %>% data.frame() %>%
-  distinct(specificities, .keep_all = TRUE) %>%
-  arrange(desc(specificities)) %>%
+  data = rocsheet)[2:4] |> data.frame() |>
+  distinct(specificities, .keep_all = TRUE) |>
+  arrange(desc(specificities)) |>
   distinct(sensitivities, .keep_all = TRUE)
 
 rocplot <-
@@ -178,29 +180,31 @@ roc %<>% mutate(residual =
                     \(x,y) (1-x+y)/2)
                     )
 
+png("output/ROC_analysis_v6.png", res = 600, height = 12, width = 15, units = "cm")
 ggplot(data = roc, aes(x = specificities, y = sensitivities)) +
-  geom_step(direction = "hv",
-            linewidth = 1.5,
-            alpha = 0.9) +  
   geom_rect(aes(xmin = specificities,
                 xmax = lead(specificities),
                 ymin = 0,
                 ymax = sensitivities),
             alpha = 0.08,
             fill = "grey50") +
-  geom_abline(slope = 1,
-              intercept = 1,
-              linewidth = 1.2,
-              alpha = 0.3,
-              linetype = "22") +
+  geom_step(direction = "hv",
+            linewidth = 1.5,
+            alpha = 0.9) +  
   geom_segment(aes(x = specificities,
                    xend = midpoint.x,
                    y = sensitivities,
                    yend = midpoint.y,
                    color = residual),
                linewidth = 0.8,
-               alpha = 0.95,
-               linetype = "21") +
+               alpha = 0.9,
+               linetype = "11") +
+  geom_abline(slope = 1,
+              intercept = 1,
+              linewidth = 1.2,
+              alpha = 1,
+              color = "grey80",
+              linetype = "41") +
   geom_point(aes(fill = thresholds),
              alpha = 0.9,
              shape = 22,
@@ -214,10 +218,11 @@ ggplot(data = roc, aes(x = specificities, y = sensitivities)) +
                     labels = function(x) glue("{x}%"),
                     limits = c(9,51),
                     name = "Threshold") +
-  scale_color_viridis_c(direction = 1,
+  scale_color_viridis_c(direction = -1,
                         name = "Residual",
-                        n.breaks = 5,
-                        limits = c(0.001,0.18),
+                        n.breaks = 3,
+                        limits = c(0.04,0.175),
+                        begin = 0.35,
                         na.value = "red1", #highlight 10% cutoff
                         option = "G") +
   labs(x = "Specificity", 
@@ -234,19 +239,18 @@ ggplot(data = roc, aes(x = specificities, y = sensitivities)) +
   theme(
     panel.background = element_rect(color = "black", fill = "grey99"),
     panel.grid = element_line(color = "grey94"),
-    text = element_text(family = "Barlow"),
-    axis.title = element_text(family = "Barlow Medium"),
+    text = element_text(family = "Barlow Medium"),
     axis.title.x.bottom = element_text(margin = margin(0.3,0,0,0, unit = "cm")),
     axis.title.y.left = element_text(margin = margin(0,0.3,0,0, unit = "cm")),
     # legend.position = c(0.78,0.25),
     # legend.box = "horizontal",
     # legend.background = element_rect(color = "grey85")
     )
-ggsave("output/ROC_analysis_v5.png", dpi=600, height = 12, width = 15, units = "cm")
+dev.off()
 
 ## fig 3 survial plot path UIP -------------------
 png("output/pathUIPsurv_v3.png", res = 300, width = 6, height = 4, units = "in")
-survfit2(Surv(obs_months, death_or_lung_transplant) ~ pathUIP, data = sheet) %>%
+survfit2(Surv(obs_months, death_or_lung_transplant) ~ pathUIP, data = sheet) |>
   ggsurvfit(linewidth = 1, show.legend = FALSE) +
   add_censor_mark(shape = "|", size = 3, alpha = 0.7, show.legend = FALSE) +
   add_confidence_interval(alpha = 0.15, show.legend = FALSE) +
@@ -298,7 +302,7 @@ dev.off()
 
 ## fig 4 suvival plot 2 focaluip individually --------
 png("output/focUIPsurv_consensus_v1.png", res = 600, width = 6, height = 4, units = "in")
-survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = sheet) %>%
+survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = sheet) |>
   ggsurvfit(linewidth = 1, show.legend = FALSE) +
   add_censor_mark(shape = "|", size = 3, alpha = 0.7, show.legend = FALSE) +
   add_confidence_interval(alpha = 0.15, show.legend = FALSE) +
@@ -324,7 +328,7 @@ survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data =
 dev.off()
 # fig 4 suvival plot 2 focaluip by
 png("output/focUIPsurv_patho1_v1.png", res = 600, width = 6, height = 4, units = "in")
-survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP1, data = sheet) %>%
+survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP1, data = sheet) |>
   ggsurvfit(linewidth = 1, show.legend = FALSE) +
   add_censor_mark(shape = "|", size = 3, alpha = 0.7, show.legend = FALSE) +
   add_confidence_interval(alpha = 0.15, show.legend = FALSE) +
@@ -350,7 +354,7 @@ survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP1, data = sheet) %
 dev.off()
 
 png("output/focUIPsurv_patho2_v1.png", res = 600, width = 6, height = 4, units = "in")
-survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP2, data = sheet) %>%
+survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP2, data = sheet) |>
   ggsurvfit(linewidth = 1, show.legend = FALSE) +
   add_censor_mark(shape = "|", size = 3, alpha = 0.7, show.legend = FALSE) +
   add_confidence_interval(alpha = 0.15, show.legend = FALSE) +
@@ -376,7 +380,7 @@ survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP2, data = sheet) %
 dev.off()
 
 png("output/focUIPsurv_patho3_v1.png", res = 600, width = 6, height = 4, units = "in")
-survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP3, data = sheet) %>%
+survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP3, data = sheet) |>
   ggsurvfit(linewidth = 1, show.legend = FALSE) +
   add_censor_mark(shape = "|", size = 3, alpha = 0.7, show.legend = FALSE) +
   add_confidence_interval(alpha = 0.15, show.legend = FALSE) +
@@ -403,7 +407,7 @@ dev.off()
 
 ## fig 4 gridarrange ------
 p1 <- 
-  survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP1, data = sheet) %>%
+  survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP1, data = sheet) |>
   ggsurvfit(linewidth = 1, show.legend = FALSE) +
   add_censor_mark(shape = "|", size = 3, alpha = 0.7, show.legend = FALSE) +
   add_confidence_interval(alpha = 0.15, show.legend = FALSE) +
@@ -428,7 +432,7 @@ p1 <-
   annotate("text", x = 0, y = 0, label = "log-rank test, p < 0.0001", color = "grey30", family = "Barlow Medium", hjust = 0, vjust = 0)
 
 p2 <- 
-  survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP2, data = sheet) %>%
+  survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP2, data = sheet) |>
   ggsurvfit(linewidth = 1, show.legend = FALSE) +
   add_censor_mark(shape = "|", size = 3, alpha = 0.7, show.legend = FALSE) +
   add_confidence_interval(alpha = 0.15, show.legend = FALSE) +
@@ -453,7 +457,7 @@ p2 <-
   annotate("text", x = 0, y = 0, label = "log-rank test, p < 0.0001", color = "grey30", family = "Barlow Medium", hjust = 0, vjust = 0)
 
 p3 <- 
-  survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP3, data = sheet) %>%
+  survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP3, data = sheet) |>
   ggsurvfit(linewidth = 1, show.legend = FALSE) +
   add_censor_mark(shape = "|", size = 3, alpha = 0.7, show.legend = FALSE) +
   add_confidence_interval(alpha = 0.15, show.legend = FALSE) +
@@ -477,7 +481,7 @@ p3 <-
   annotate("text", x = 65, y = 0.46, label = "Focal UIP +", color = "#286d8f", family = "Barlow Medium", hjust = 0) +
   annotate("text", x = 0, y = 0, label = "log-rank test, p = 0.0002", color = "grey30", family = "Barlow Medium", hjust = 0, vjust = 0)
 
-pc <- survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = sheet) %>%
+pc <- survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = sheet) |>
   ggsurvfit(linewidth = 1, show.legend = FALSE) +
   add_censor_mark(shape = "|", size = 3, alpha = 0.7, show.legend = FALSE) +
   add_confidence_interval(alpha = 0.15, show.legend = FALSE) +
@@ -518,7 +522,7 @@ grid.arrange(
 dev.off()
 ## fig 5 focalUIP by etiology ------
 
-p1 <- survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = filter(sheet, disease == "cHP")) %>%
+p1 <- survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = filter(sheet, disease == "cHP")) |>
   ggsurvfit(linewidth = 1, show.legend = FALSE) +
   add_censor_mark(shape = "|", size = 3, alpha = 0.7, show.legend = FALSE) +
   add_confidence_interval(alpha = 0.15, show.legend = FALSE) +
@@ -543,7 +547,7 @@ p1 <- survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, 
   annotate("text", x = 60, y = 0.43, label = "Focal UIP +", color = "#286d8f", family = "Barlow Medium", hjust = 0) +
   annotate("text", x = 0, y = 0, label = "log-rank test, p = 0.107", color = "grey30", family = "Barlow Medium", hjust = 0, vjust = 0)
 
-p2 <- survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = filter(sheet, disease == "CTD-ILD")) %>%
+p2 <- survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = filter(sheet, disease == "CTD-ILD")) |>
   ggsurvfit(linewidth = 1, show.legend = FALSE) +
   add_censor_mark(shape = "|", size = 3, alpha = 0.7, show.legend = FALSE) +
   add_confidence_interval(alpha = 0.15, show.legend = FALSE) +
@@ -568,7 +572,7 @@ p2 <- survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, 
   annotate("text", x = 55, y = 0.58, label = "Focal UIP +", color = "#286d8f", family = "Barlow Medium", hjust = 0) +
   annotate("text", x = 0, y = 0, label = "log-rank test, p = 0.0375", color = "grey30", family = "Barlow Medium", hjust = 0, vjust = 0)
 
-p3 <- survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = filter(sheet, disease == "UC-ILD")) %>%
+p3 <- survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = filter(sheet, disease == "UC-ILD")) |>
   ggsurvfit(linewidth = 1, show.legend = FALSE) +
   add_censor_mark(shape = "|", size = 3, alpha = 0.7, show.legend = FALSE) +
   add_confidence_interval(alpha = 0.15, show.legend = FALSE) +
@@ -593,7 +597,7 @@ p3 <- survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, 
   annotate("text", x = 80, y = 0.43, label = "Focal UIP +", color = "#286d8f", family = "Barlow Medium", hjust = 0) +
   annotate("text", x = 0, y = 0, label = "log-rank test, p = 0.0075", color = "grey30", family = "Barlow Medium", hjust = 0, vjust = 0)
 
-p4 <- survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = filter(sheet, disease == "iNSIP")) %>%
+p4 <- survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = filter(sheet, disease == "iNSIP")) |>
   ggsurvfit(linewidth = 1, show.legend = FALSE) +
   add_censor_mark(shape = "|", size = 3, alpha = 0.7, show.legend = FALSE) +
   add_confidence_interval(alpha = 0.15, show.legend = FALSE) +
@@ -629,7 +633,7 @@ dev.off()
 
 ## fig 6 focalUIP within pathUIP- cases ------
 png("output/focalUIPinpathUIPneg_v1.png", res = 300, width = 6, height = 4, units = "in")
-survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = filter(sheet, pathUIP == 0)) %>%
+survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = filter(sheet, pathUIP == 0)) |>
   ggsurvfit(linewidth = 1, show.legend = FALSE) +
   add_censor_mark(shape = "|", size = 3, alpha = 0.7, show.legend = FALSE) +
   add_confidence_interval(alpha = 0.15, show.legend = FALSE) +
@@ -658,21 +662,21 @@ dev.off()
 variables <- c("focalUIP_consensus", "disease", "Age", "Male", "nonsmoker", "FVC", "`%FVC`", "Dlco", "`%Dlco`", "log(`KL-6`)")
 
 univariate_cox_results <-
-  tibble(variables) %>%
-  mutate(formula = map(variables, \(x) formula(glue("Surv(obs_months, death_or_lung_transplant) ~ {x}")))) %>%
-  mutate(coxresults = map(formula, \(x) coxph(x, data = sheet))) %>%
-  mutate(summary = map(coxresults, tidy, exponentiate = TRUE, conf.int = TRUE)) %>%
-  unnest_wider(summary) %>%
-  select(term, estimate, p.value, conf.low, conf.high) %>%
-  separate_rows(c(term, estimate, p.value, conf.low, conf.high), sep = ", ") %>%
+  tibble(variables) |>
+  mutate(formula = map(variables, \(x) formula(glue("Surv(obs_months, death_or_lung_transplant) ~ {x}")))) |>
+  mutate(coxresults = map(formula, \(x) coxph(x, data = sheet))) |>
+  mutate(summary = map(coxresults, tidy, exponentiate = TRUE, conf.int = TRUE)) |>
+  unnest_wider(summary) |>
+  select(term, estimate, p.value, conf.low, conf.high) |>
+  separate_rows(c(term, estimate, p.value, conf.low, conf.high), sep = ", ") |>
   mutate(
     conf.low = round(conf.low, 3),
     conf.high = round(conf.high, 3)
-  ) %>%
+  ) |>
   mutate(
     conf.low = as.character(conf.low),
     conf.high = as.character(conf.high)
-  ) %>%
+  ) |>
   unite(conf.low, conf.high, col = "CI", sep = ", ")
 
 write_csv(univariate_cox_results, "output/univariate_cox_results.csv")
@@ -695,17 +699,17 @@ res.cox <-
 summary(res.cox)
 
 
-multivariate_cox_results <- res.cox %>%
-  tidy(exponentiate = TRUE, conf.int = TRUE) %>%
+multivariate_cox_results <- res.cox |>
+  tidy(exponentiate = TRUE, conf.int = TRUE) |>
   mutate(
     conf.low = round(conf.low, 3),
     conf.high = round(conf.high, 3)
-  ) %>%
+  ) |>
   mutate(
     conf.low = as.character(conf.low),
     conf.high = as.character(conf.high)
-  ) %>%
-  unite(conf.low, conf.high, col = "CI", sep = ", ") %>%
+  ) |>
+  unite(conf.low, conf.high, col = "CI", sep = ", ") |>
   mutate(
     std.error = NULL,
     statistic = NULL
@@ -736,26 +740,26 @@ n_perm <- 2000
 cox_perm <- function() {
   sheet.iter <- filter(sheet, disease != "iPPFE")
   sheet.iter$permdisease <- sample(sheet.iter$disease, replace = FALSE)
-  coxph.results <- sheet.iter %>%
-    group_by(permdisease) %>%
-    tidyr::nest() %>%
-    mutate(data = map(data, ~ coxph(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = .x))) %>%
-    mutate(data = map(data, \(x) data.frame(summary(x)$coef))) %>%
+  coxph.results <- sheet.iter |>
+    group_by(permdisease) |>
+    tidyr::nest() |>
+    mutate(data = map(data, ~ coxph(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = .x))) |>
+    mutate(data = map(data, \(x) data.frame(summary(x)$coef))) |>
     unnest(data)
   colnames(coxph.results)[3] <- "HR"
   colnames(coxph.results)[6] <- "p.value"
   return(coxph.results)
 }
 
-coxph_results <- data.frame(1:n_perm) %>%
-  mutate(perm = map(1:n_perm, \(i) cox_perm(), .progress = TRUE)) %>%
+coxph_results <- data.frame(1:n_perm) |>
+  mutate(perm = map(1:n_perm, \(i) cox_perm(), .progress = TRUE)) |>
   unnest(perm)
 
-coxph_real <- filter(sheet, disease != "iPPFE") %>%
-  group_by(disease) %>%
-  tidyr::nest() %>%
-  mutate(data = map(data, ~ coxph(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = .x))) %>%
-  mutate(data = map(data, \(x) data.frame(summary(x)$coef))) %>%
+coxph_real <- filter(sheet, disease != "iPPFE") |>
+  group_by(disease) |>
+  tidyr::nest() |>
+  mutate(data = map(data, ~ coxph(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = .x))) |>
+  mutate(data = map(data, \(x) data.frame(summary(x)$coef))) |>
   unnest(data)
 colnames(coxph_real)[3] <- "HR"
 colnames(coxph_real)[6] <- "p.value"
@@ -769,10 +773,10 @@ create_marginal_plot_func <- function(coxph_results, permdisease_str, n) {
   else {
     vlabel <- paste("HR =", format(coxph_real[coxph_real["disease"] == permdisease_str, ][["HR"]], scientific = FALSE, digits = 4))
   } # sets the vertical line label
-  coxph_results %>%
-    filter(permdisease == permdisease_str) %>%
-    mutate(res.ecdf = ecdf(.$coef)(.$coef)) %>%
-    filter(.$res.ecdf < 0.99 & .$res.ecdf > 1 - 0.99 & .$p.value < 0.99, ) %>%
+  coxph_results |>
+    filter(permdisease == permdisease_str) |>
+    mutate(res.ecdf = ecdf(.$coef)(.$coef)) |>
+    filter(.$res.ecdf < 0.99 & .$res.ecdf > 1 - 0.99 & .$p.value < 0.99, ) |>
     {ggMarginal(
       ggplot(aes(x = HR, y = -log10(p.value)), data = .) +
         geom_point(alpha = 0.2, stroke = NA, size = 1.5) +
@@ -822,38 +826,38 @@ var_label(sheet) <- list(
 )
 
 t1 <- tbl_merge(
-  tbls = list(sheet %>% #pathUIP
-                select(pathUIP, Male, Age, smoking_hist, FVC, `%FVC`, Dlco, `%Dlco`, `KL-6`, disease) %>%
-                mutate(pathUIP = if_else(pathUIP == 1, "Positive", "Negative")) %>%
+  tbls = list(sheet |> #pathUIP
+                select(pathUIP, Male, Age, smoking_hist, FVC, `%FVC`, Dlco, `%Dlco`, `KL-6`, disease) |>
+                mutate(pathUIP = if_else(pathUIP == 1, "Positive", "Negative")) |>
                 tbl_summary(by = pathUIP,
                             digits = Age ~ 2,
                             statistic = list(all_continuous() ~ "{mean} ± {sd}"),
                             missing = "ifany",
                             missing_text = "Missing",
-                            percent = "row") %>%
-                add_p() %>%
-                bold_p() %>%
-                separate_p_footnotes() %>%
+                            percent = "row") |>
+                add_p() |>
+                bold_p() |>
+                separate_p_footnotes() |>
                 # modify_table_styling(columns = all_of("p.value"), 
-                #                      text_format = "italic") %>%
+                #                      text_format = "italic") |>
                 modify_header(p.value = "***p-value***"),
-              sheet %>% #focalUIP
-                select(focalUIP_consensus, Male, Age, smoking_hist, FVC, `%FVC`, Dlco, `%Dlco`, `KL-6`, disease) %>%
-                mutate(focalUIP_consensus = if_else(focalUIP_consensus == 1, "Positive", "Negative")) %>%
+              sheet |> #focalUIP
+                select(focalUIP_consensus, Male, Age, smoking_hist, FVC, `%FVC`, Dlco, `%Dlco`, `KL-6`, disease) |>
+                mutate(focalUIP_consensus = if_else(focalUIP_consensus == 1, "Positive", "Negative")) |>
                 tbl_summary(by = focalUIP_consensus,
                             digits = Age ~ 2,
                             statistic = list(all_continuous() ~ "{mean} ± {sd}"),
                             missing = "ifany",
                             missing_text = "Missing",
-                            percent = "row") %>%
-                add_p() %>%
-                bold_p() %>%
-                separate_p_footnotes() %>%
+                            percent = "row") |>
+                add_p() |>
+                bold_p() |>
+                separate_p_footnotes() |>
                 # modify_table_styling(columns = all_of("p.value"), 
-                #                      text_format = "italic") %>%
+                #                      text_format = "italic") |>
                 modify_header(p.value = "***p-value***"),
-              sheet %>% #Total
-                select(Male, Age, smoking_hist, FVC, `%FVC`, Dlco, `%Dlco`, `KL-6`, disease) %>%
+              sheet |> #Total
+                select(Male, Age, smoking_hist, FVC, `%FVC`, Dlco, `%Dlco`, `KL-6`, disease) |>
                 tbl_summary(
                   digits = Age ~ 2,
                   statistic = list(all_continuous() ~ "{mean} ± {sd}"),
@@ -862,7 +866,7 @@ t1 <- tbl_merge(
                   percent = "row")
   ),
   tab_spanner = c("**Pathological UIP**", "**Focal UIP**", "**Total**")
-) %>% as_gt()
+) |> as_gt()
 
 # was having a glitch where multiple footnotes were showing up for one p-value
 t1[["_footnotes"]] %<>% filter(!(colname == "p.value_1" & rownum == 5 & footnotes == "Fisher's exact test"),
@@ -870,7 +874,142 @@ t1[["_footnotes"]] %<>% filter(!(colname == "p.value_1" & rownum == 5 & footnote
 gtsave(t1, "output/table1.png", zoom = 10, delay = 0.5, expand = 20)
 
 
-## table 2 disease stats ---------------------
+## table 2 histology ------------------
+
+tablex_func <- function(data = sheet,
+                        table_n,
+                        grouporder) {
+  sheet |>
+    select(dx1, dx_sub) |>
+    filter(!is.na(dx1)) |>
+    group_by(dx1) |>
+    count(dx_sub) |>
+    mutate(dx_sub = case_when(is.na(dx_sub) ~ glue("{dx1}"),
+                              TRUE ~ dx_sub),) |>
+    arrange((dx_sub)) |>
+    mutate(
+      tableno = case_when(
+        dx1 == "NSIP" ~ 1,
+        dx1 == "Definite UIP" ~ 1,
+        dx1 == "Probable UIP" ~ 1,
+        dx1 == "Possible UIP" ~ 1,
+        dx1 == "ALI" ~ 2,
+        dx1 == "ACIF" ~ 2,
+        dx1 == "DAD" ~ 2,
+        dx1 == "Favor UIP" ~ 1,
+        dx1 == "Not UIP" ~ 1,
+        dx1 == "LIP" ~ 2,
+        dx1 == "OP" ~ 2,
+        dx1 == "Cellular OP" ~ 2,
+        dx1 == "PPFE" ~ 2,
+        dx1 == "IP" ~ 2,
+        dx1 == "Small airway disease" ~ 2,
+        dx1 == "PAP" ~ 2,
+        dx1 == "Bronchiolitis" ~ 2,
+        dx1 == "DIP" ~ 2,
+      )
+    ) |>
+    filter(tableno == table_n) |>
+    select(-tableno) |>
+    gt(rowname_col = "dx_sub",) |>
+    tab_stubhead(md("**Diagnosis**")) |>
+    cols_label(n = md("**N**")) |>
+    summary_rows(
+      fns = list(label = "Total") ~ glue("{sum(.)} ({round(sum(.)/201*100,1)}%)"),
+      side = "top"
+    ) |>
+    # tab_footnote(footnote = "Percentage of cohort showing finding",
+    #              locations = cells_summary(columns = n)) |>
+    cols_align(align = "left",
+               columns = "dx_sub") |>
+    cols_align(align = "center",
+               columns = n) |>
+    tab_style(style = cell_text(indent = pct(15)),
+              locations = cells_stub()) |>
+    tab_style(style = cell_text(align = "center"),
+              locations = cells_column_labels(columns = n)) |>
+    tab_style(style = cell_text(weight = "bold"),
+              locations = cells_row_groups()) |>
+    tab_style(style = cell_text(indent = pct(7)),
+              locations = cells_stub_summary()) |>
+    tab_options(
+      table.width = px(250),
+      table.font.size = 11,
+      column_labels.hidden = T
+    ) |>
+    row_group_order(groups = grouporder) |>
+    opt_vertical_padding(0) |>
+    as_raw_html()
+}
+
+data.frame(
+  tablex_func(
+    table_n = 1,
+    grouporder = c(
+      "NSIP",
+      "Definite UIP",
+      "Probable UIP",
+      "Possible UIP",
+      "Favor UIP",
+      "Not UIP"
+    )
+  ),
+  tablex_func(
+    table_n = 2,
+    grouporder = c(
+      "ALI",
+      "ACIF",
+      "DAD",
+      "IP",
+      "OP",
+      "Cellular OP",
+      "LIP",
+      "PPFE",
+      "Small airway disease",
+      "PAP",
+      "DIP",
+      "Bronchiolitis"
+    )
+  )
+) |>
+  gt() |>
+  fmt_markdown(columns = everything()) |>
+  tab_source_note(source_note = "Total counts presented with percentages showing frequency of finding in total cohort.") |>
+  tab_header(title = "Histopathological Findings in a 201-case PPF Cohort") |>
+  tab_options(
+    column_labels.hidden = T,
+    data_row.padding.horizontal = px(8),
+    table.width = 510,
+    heading.title.font.size = 18,
+    heading.border.bottom.width = 2,
+    heading.border.bottom.color = "grey80",
+    source_notes.font.size = 11
+  ) |>
+  tab_style(
+    style = "vertical-align:top",
+    locations = cells_body()
+  ) %T>%
+  gtsave("output/tablex_v2.png", zoom = 10)
+
+
+# simplified table without dx_sub
+theme_gtsummary_compact()
+sheet %>%
+  select(dx1) %>%  
+  tbl_summary(sort = everything() ~ "frequency",
+              missing_text = "Missing Data",
+              label = dx1 ~ "") %>% 
+  modify_header(list(
+    label ~ "**Histology**",
+    stat_0 ~ "**Cohort,<br>N = 201**")
+    ) %>% 
+  modify_column_indent(columns = label,
+                       undo = TRUE) %>% 
+  as_gt() %>% 
+  gtsave("output/tablex_v3.png", zoom=10)
+  
+
+## table 3 disease stats ---------------------
 
 table2 <- tribble(~disease,~n, ~def, ~prob, ~poss, ~other, ~rate,
                   "iNSIP",19,0,0,0,4,"21%",
@@ -879,9 +1018,9 @@ table2 <- tribble(~disease,~n, ~def, ~prob, ~poss, ~other, ~rate,
                   "iPPFE",2,0,0,0,1,"50%",
                   "UC-ILD",84,13,16,11,8,"57%")
 
-gt(table2, rowname_col = "disease") %>%
-  tab_stubhead(label = md("**Etiology**")) %>%
-  tab_header(title = md("**PPF**; Progressive Pulmonary Fibrosis (n = 201)")) %>%
+gt(table2, rowname_col = "disease") |>
+  tab_stubhead(label = md("**Etiology**")) |>
+  tab_header(title = md("**PPF**; Progressive Pulmonary Fibrosis (n = 201)")) |>
   cols_label(
     n = "N",
     def = "Definite UIP",
@@ -889,23 +1028,23 @@ gt(table2, rowname_col = "disease") %>%
     poss = "Possible UIP",
     other = "UIP vs. Other",
     rate = "Percent UIP+"
-  ) %>%
+  ) |>
   tab_options(
     heading.title.font.size = "medium",
     table.width = px(720),
     table.align = "left"
-  ) %>%
+  ) |>
   tab_style(
     style = cell_text(align = "center"),
     locations = cells_body()
-  ) %>%
+  ) |>
   tab_style(
     style = cell_text(align = "center"),
     locations = cells_column_labels()
-  ) %>%
+  ) |>
   gtsave("output/table2.png", zoom = 10, delay = 0.5)
 
-## table 3 cox results in gt --------------
+## table 4 cox results in gt --------------
 
 var_label(sheet) <- list(
   focalUIP_consensus = "Focal UIP",
@@ -921,23 +1060,23 @@ multivariate_tbl <-
     res.cox,
     exponentiate = TRUE,
     show_single_row = "Male"
-  ) %>%
-  bold_p()%>%
-  modify_header(p.value = "***p-value***") %>%
+  ) |>
+  bold_p()|>
+  modify_header(p.value = "***p-value***") |>
   modify_table_styling(columns = p.value,
                        footnote = "Wald test")
 
-univariate_tbl <- sheet %>%
-  select(focalUIP_consensus, obs_months, death_or_lung_transplant,  Male, Age,smoking_hist, FVC, `%FVC`, Dlco, `%Dlco`, `KL-6`, disease,) %>%
-  mutate(`KL-6` = log(`KL-6`)) %>%
+univariate_tbl <- sheet |>
+  select(focalUIP_consensus, obs_months, death_or_lung_transplant,  Male, Age,smoking_hist, FVC, `%FVC`, Dlco, `%Dlco`, `KL-6`, disease,) |>
+  mutate(`KL-6` = log(`KL-6`)) |>
   tbl_uvregression(
     method = coxph,
     y = Surv(obs_months, death_or_lung_transplant),
     exponentiate = TRUE,
     show_single_row = "Male"
-  ) %>%
-  bold_p() %>%
-  modify_header(p.value = "***p-value***") %>%
+  ) |>
+  bold_p() |>
+  modify_header(p.value = "***p-value***") |>
   modify_table_styling(columns = p.value,
                        footnote = "Wald test")
 
@@ -945,11 +1084,11 @@ table3 <-
   tbl_merge(
     tbls = list(univariate_tbl, multivariate_tbl),
     tab_spanner = c("**Univariate**", "**Multivariate**")
-  ) %>%
-  as_gt() %>%
+  ) |>
+  as_gt() |>
   text_replace(
     locations = cells_body(columns = c("ci_1", "ci_2")),
     pattern = "(^\\d.*)",
     replacement = ("\\[\\1\\]")
-  ) %>%
+  ) |>
   gtsave("output/table3.png", zoom = 10)
