@@ -60,6 +60,7 @@ var_label(sheet) <- list(
   smoking_hist = "Smoking history",
   Male = "Sex"
 )
+table2sheet <- read_excel(input_data_path, sheet = "Sheet4")
 #
 ## End Header ------------------------------
 ## Focal UIP Threshold (Cutoff) Analysis ---------------
@@ -989,24 +990,18 @@ data.frame(
     style = "vertical-align:top",
     locations = cells_body()
   ) %T>%
-  gtsave("output/tablex_v2.png", zoom = 10)
+  gtsave("output/table2_v2.png", zoom = 10)
 
 
 # simplified table without dx_sub
-theme_gtsummary_compact()
-sheet %>%
-  select(dx1) %>%  
-  tbl_summary(sort = everything() ~ "frequency",
-              missing_text = "Missing Data",
-              label = dx1 ~ "") %>% 
-  modify_header(list(
-    label ~ "**Histology**",
-    stat_0 ~ "**Cohort,<br>N = 201**")
-    ) %>% 
-  modify_column_indent(columns = label,
-                       undo = TRUE) %>% 
-  as_gt() %>% 
-  gtsave("output/tablex_v3.png", zoom=10)
+table2sheet %>%
+  gt() %>% 
+  tab_style(style = cell_text(weight = "bold"),
+            locations = cells_column_labels()) %>%
+  tab_style(style = cell_text(align = "center"),
+            locations = cells_body(columns = 2:3)) %>% 
+  gtsave("output/table2_v5.png", zoom=10,
+         expand = 20)
   
 
 ## table 3 disease stats ---------------------
@@ -1042,7 +1037,7 @@ gt(table2, rowname_col = "disease") |>
     style = cell_text(align = "center"),
     locations = cells_column_labels()
   ) |>
-  gtsave("output/table2.png", zoom = 10, delay = 0.5)
+  gtsave("output/table3.png", zoom = 10, delay = 0.5)
 
 ## table 4 cox results in gt --------------
 
@@ -1091,4 +1086,4 @@ table3 <-
     pattern = "(^\\d.*)",
     replacement = ("\\[\\1\\]")
   ) |>
-  gtsave("output/table3.png", zoom = 10)
+  gtsave("output/table4.png", zoom = 10)
