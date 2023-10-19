@@ -832,7 +832,7 @@ t1 <- tbl_merge(
                 mutate(pathUIP = if_else(pathUIP == 1, "Positive", "Negative")) |>
                 tbl_summary(by = pathUIP,
                             digits = Age ~ 2,
-                            statistic = list(all_continuous() ~ "{mean} ± {sd}"),
+                            statistic = list(all_continuous() ~ "{median} ({p25}, {p75})"),
                             missing = "ifany",
                             missing_text = "Missing",
                             percent = "row") |>
@@ -847,7 +847,7 @@ t1 <- tbl_merge(
                 mutate(focalUIP_consensus = if_else(focalUIP_consensus == 1, "Positive", "Negative")) |>
                 tbl_summary(by = focalUIP_consensus,
                             digits = Age ~ 2,
-                            statistic = list(all_continuous() ~ "{mean} ± {sd}"),
+                            statistic = list(all_continuous() ~ "{median} ({p25}, {p75})"),
                             missing = "ifany",
                             missing_text = "Missing",
                             percent = "row") |>
@@ -861,13 +861,15 @@ t1 <- tbl_merge(
                 select(Male, Age, smoking_hist, FVC, `%FVC`, Dlco, `%Dlco`, `KL-6`, disease) |>
                 tbl_summary(
                   digits = Age ~ 2,
-                  statistic = list(all_continuous() ~ "{mean} ± {sd}"),
+                  statistic = list(all_continuous() ~ "{median} ({p25}, {p75})"),
                   missing = "ifany",
                   missing_text = "Missing",
                   percent = "row")
   ),
   tab_spanner = c("**Pathological UIP**", "**Focal UIP**", "**Total**")
-) |> as_gt()
+) |> as_gt() %>% 
+  text_replace(pattern = "\\.00",
+               replacement = "")
 
 # was having a glitch where multiple footnotes were showing up for one p-value
 t1[["_footnotes"]] %<>% filter(!(colname == "p.value_1" & rownum == 5 & footnotes == "Fisher's exact test"),
