@@ -826,7 +826,8 @@ var_label(sheet) <- list(
   Male = "Sex"
 )
 
-t1 <- tbl_merge(
+t1 <-
+  tbl_merge(
   tbls = list(sheet %>% #pathUIP
                 select(pathUIP, Male, Age, smoking_hist, FVC, `%FVC`, Dlco, `%Dlco`, `KL-6`, disease) %>%
                 mutate(pathUIP = if_else(pathUIP == 1, "Positive", "Negative")) %>%
@@ -868,7 +869,7 @@ t1 <- tbl_merge(
   ),
   tab_spanner = c("**Pathological UIP**", "**Focal UIP**", "**Total**")
 ) %>% as_gt() %>% 
-  text_replace(pattern = "\\.00",
+  text_replace(pattern = "(?<!0)\\.00",
                replacement = "")
 
 # was having a glitch where multiple footnotes were showing up for one p-value
