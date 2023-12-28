@@ -250,7 +250,7 @@ ggplot(data = roc, aes(x = specificities, y = sensitivities)) +
 dev.off()
 
 ## fig 3 survial plot path UIP -------------------
-png("output/fig3_pathUIPsurv_v3.png", res = 600, width = 6, height = 4, units = "in")
+png("output/fig3.png", res = 800, width = 6, height = 4, units = "in")
 survfit2(Surv(obs_months, death_or_lung_transplant) ~ pathUIP, data = sheet) %>%
   ggsurvfit(linewidth = 1, show.legend = FALSE) +
   add_censor_mark(shape = "|", size = 3, alpha = 0.7, show.legend = FALSE) +
@@ -506,7 +506,7 @@ pc <- survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, 
   annotate("text", x = 80, y = 0.43, label = "Focal UIP +", color = "#286d8f", family = "Barlow Medium", hjust = 0) +
   annotate("text", x = 0, y = 0, label = "log-rank test, p < 0.0001", color = "grey30", family = "Barlow Medium", hjust = 0, vjust = 0)
 
-png("output/fig4_sharedaxistitles.png", res = 600, width = 20, height = 20, units = "cm")
+png("output/fig4.png", res = 800, width = 20, height = 20, units = "cm")
 grid.arrange(
   arrangeGrob(p1 + labs(title = "Pathologist 1") + theme(axis.title.x.bottom = element_blank()),
     p2 + labs(title = "Pathologist 2") + theme(axis.title.x.bottom = element_blank()),
@@ -623,7 +623,7 @@ p4 <- survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, 
   annotate("text", x = 70, y = 0.45, label = "Focal UIP +", color = "#286d8f", family = "Barlow Medium", hjust = 0) +
   annotate("text", x = 0, y = 0, label = "log-rank test, p = 0.0131", color = "grey30", family = "Barlow Medium", hjust = 0, vjust = 0)
 
-png("output/fig5_focalUIPbyetiology_v1.png", res = 600, width = 12, height = 8, units = "in")
+png("output/fig5.png", res = 800, width = 12, height = 8, units = "in")
 grid.arrange(p1,
   p2,
   p3,
@@ -633,7 +633,7 @@ grid.arrange(p1,
 dev.off()
 
 ## fig 6 focalUIP within pathUIP- cases ------
-png("output/fig6_focalUIPinpathUIPneg_v1.png", res = 600, width = 6, height = 4, units = "in")
+png("output/fig6.png", res = 800, width = 6, height = 4, units = "in")
 survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = filter(sheet, pathUIP == 0)) %>%
   ggsurvfit(linewidth = 1, show.legend = FALSE) +
   add_censor_mark(shape = "|", size = 3, alpha = 0.7, show.legend = FALSE) +
@@ -811,7 +811,7 @@ p3 <- create_marginal_plot_func(coxph_results, "UC-ILD", 84)
 
 p4 <- create_marginal_plot_func(coxph_results, "iNSIP", 19)
 
-png("output/fig7_permutationtestcox.png", res = 600, width = 16, height = 12, units = "cm")
+png("output/fig7.png", res = 800, width = 16, height = 12, units = "in")
 grid.arrange(p1, p2, p3, p4)
 dev.off()
 
@@ -870,11 +870,15 @@ t1 <-
   tab_spanner = c("**Pathological UIP**", "**Focal UIP**", "**Total**")
 ) %>% as_gt() %>% 
   text_replace(pattern = "(?<!0)\\.00",
-               replacement = "")
+               replacement = "") %>% 
+  tab_footnote("The pathology of these four cases were difficult to distinguish between UIP and NSIP, but the final diagnosis of NSIP was determined via MDD.", 
+               locations = cells_body(columns = "stat_2_1", rows = 19)
+               )
 
 # was having a glitch where multiple footnotes were showing up for one p-value
 t1[["_footnotes"]] %<>% filter(!(colname == "p.value_1" & rownum == 5 & footnotes == "Fisher's exact test"),
-                               !(colname == "p.value_2" & rownum == 5 & footnotes == "Pearson's Chi-squared test"))
+                               !(colname == "p.value_2" & rownum == 5 & footnotes == "Pearson's Chi-squared test"),
+                               )
 gtsave(t1, "output/table1.png", zoom = 10, delay = 0.5, expand = 20)
 gtsave(t1, "output/table1.docx")
 
@@ -1067,12 +1071,12 @@ univariate_tbl <- sheet %>%
     method = coxph,
     y = Surv(obs_months, death_or_lung_transplant),
     exponentiate = TRUE,
-    show_single_row = "Male"
+    show_single_row = "Male",
+    pvalue_fun = function(x) style_pvalue(x*14,digits = 2)
   ) %>%
-  bold_p() %>%
   modify_header(p.value = "***p-value***") %>%
   modify_table_styling(columns = p.value,
-                       footnote = "Wald test")
+                       footnote = "Wald test with Boneferroni correction")
 
 table4 <-
   tbl_merge(
@@ -1084,8 +1088,16 @@ table4 <-
     locations = cells_body(columns = c("ci_1", "ci_2")),
     pattern = "(^\\d.*)",
     replacement = ("\\[\\1\\]")
-  )
-
+  ) %>% 
+  tab_style_body(style = cell_text(weight = "bold"),
+                 columns = "p.value_1",
+                 fn = function(x) x<0.001)
+  # text_transform(
+  #   fn = function(x) round(as.numeric(x),digits = 2),
+  #   locations = cells_body(columns = "p.value_1",
+  #                          rows = 2:))
+  # )
+table4
 gtsave(table4, "output/table4.png", zoom = 10)
 
 gtsave(table4, "output/table4.docx")
