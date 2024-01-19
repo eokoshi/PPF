@@ -250,7 +250,7 @@ ggplot(data = roc, aes(x = specificities, y = sensitivities)) +
 dev.off()
 
 ## fig 3 survial plot path UIP -------------------
-png("output/fig3.png", res = 800, width = 6, height = 4, units = "in")
+png("output/fig3.png", res = 1800, width = 6, height = 4, units = "in")
 survfit2(Surv(obs_months, death_or_lung_transplant) ~ pathUIP, data = sheet) %>%
   ggsurvfit(linewidth = 1, show.legend = FALSE) +
   add_censor_mark(shape = "|", size = 3, alpha = 0.7, show.legend = FALSE) +
@@ -506,7 +506,7 @@ pc <- survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, 
   annotate("text", x = 80, y = 0.43, label = "Focal UIP +", color = "#286d8f", family = "Barlow Medium", hjust = 0) +
   annotate("text", x = 0, y = 0, label = "log-rank test, p < 0.0001", color = "grey30", family = "Barlow Medium", hjust = 0, vjust = 0)
 
-png("output/fig4.png", res = 800, width = 20, height = 20, units = "cm")
+png("output/fig4.png", res = 1800, width = 20, height = 20, units = "cm")
 grid.arrange(
   arrangeGrob(p1 + labs(title = "Pathologist 1") + theme(axis.title.x.bottom = element_blank()),
     p2 + labs(title = "Pathologist 2") + theme(axis.title.x.bottom = element_blank()),
@@ -623,7 +623,7 @@ p4 <- survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, 
   annotate("text", x = 70, y = 0.45, label = "Focal UIP +", color = "#286d8f", family = "Barlow Medium", hjust = 0) +
   annotate("text", x = 0, y = 0, label = "log-rank test, p = 0.0131", color = "grey30", family = "Barlow Medium", hjust = 0, vjust = 0)
 
-png("output/fig5.png", res = 800, width = 12, height = 8, units = "in")
+png("output/fig5.png", res = 1800, width = 12, height = 8, units = "in")
 grid.arrange(p1,
   p2,
   p3,
@@ -633,7 +633,7 @@ grid.arrange(p1,
 dev.off()
 
 ## fig 6 focalUIP within pathUIP- cases ------
-png("output/fig6.png", res = 800, width = 6, height = 4, units = "in")
+png("output/fig6.png", res = 1800, width = 6, height = 4, units = "in")
 survfit2(Surv(obs_months, death_or_lung_transplant) ~ focalUIP_consensus, data = filter(sheet, pathUIP == 0)) %>%
   ggsurvfit(linewidth = 1, show.legend = FALSE) +
   add_censor_mark(shape = "|", size = 3, alpha = 0.7, show.legend = FALSE) +
@@ -811,7 +811,7 @@ p3 <- create_marginal_plot_func(coxph_results, "UC-ILD", 84)
 
 p4 <- create_marginal_plot_func(coxph_results, "iNSIP", 19)
 
-png("output/fig7.png", res = 800, width = 16, height = 12, units = "in")
+png("output/fig7.png", res = 1800, width = 12, height = 8, units = "in")
 grid.arrange(p1, p2, p3, p4)
 dev.off()
 
